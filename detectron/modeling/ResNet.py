@@ -60,6 +60,7 @@ def add_ResNet152_conv5_body_old(model):
 # ---------------------------------------------------------------------------- #
 
 
+# 就是加多个residual block
 def add_stage(
     model,
     prefix,
@@ -94,7 +95,7 @@ def add_stage(
 def add_ResNet_convX_body(model, block_counts):
     """Add a ResNet body from input data up through the res5 (aka conv5) stage.
     The final res5/conv5 stage may be optionally excluded (hence convX, where
-    X = 4 or 5)."""
+    X = 4 or 5). 4和5要自己看"""
     xavier_fill = ('XavierFill', {})
     freeze_at = cfg.TRAIN.FREEZE_AT
     assert freeze_at in [0, 2, 3, 4, 5]
@@ -105,7 +106,8 @@ def add_ResNet_convX_body(model, block_counts):
     dim_bottleneck = cfg.RESNETS.NUM_GROUPS * cfg.RESNETS.WIDTH_PER_GROUP
     (n1, n2, n3) = block_counts[:3]
 
-
+    
+    
     tmp1_res2 = model.Conv(
             'old_res2_2_sum',
             'tmp1_res2',
@@ -122,10 +124,11 @@ def add_ResNet_convX_body(model, block_counts):
     #tmp2_res2 = model.net.UpsampleNearest(tmp2plus_res2, 'tmp2_res2', scale=2)
     print('p is {}'.format(p.Size))
     #print('tmp is {}'.format(tmp2_res2.Size))
-    tmp3_res2 = model.net.Sum([p, tmp1_res2], 'tmp3_res2')
+    tmp3_res2 = model.net.Sum([p, tmp1_res2], 'tmp3_res2')  # 64 w h
 
-
-    s, dim_in = add_stage(model, 'res2', tmp3_res2, n1, dim_in, 256, dim_bottleneck, 1)
+    #  resnet -> stages -> residual blocks -> conv adds
+    #  这是第一个stage的输出
+    s, dim_in = add_stage(model, 'res2', tmp3_res2, n1, dim_in, 256, dim_bottleneck, 1)  #s chnnel=256
     if freeze_at == 2:
         model.StopGradient(s, s)
 
@@ -142,8 +145,8 @@ def add_ResNet_convX_body(model, block_counts):
             bias_init=const_fill(0.0)
         )
 
-    tmp2_res3 = model.net.UpsampleNearest(tmp1_res3, 'tmp2_res3', scale=2)
-    tmp3_res3 = model.net.Sum([s, tmp2_res3], 'tmp3_res3')
+    tmp2_res3 = model.net.UpsampleNearest(tmp1_res3, 'tmp2_res3', scale=2)   #256
+    tmp3_res3 = model.net.Sum([s, tmp2_res3], 'tmp3_res3')  #256
 
 
 
@@ -268,6 +271,7 @@ def add_ResNet_roi_conv5_head(model, blob_in, dim_in, spatial_scale):
     return s, 2048
 
 
+# residual block
 def add_residual_block(
     model,
     prefix,
@@ -284,11 +288,12 @@ def add_residual_block(
 
     # Max pooling is performed prior to the first stage (which is uniquely
     # distinguished by dim_in = 64), thus we keep stride = 1 for the first stage
+    # 第一层64，不下采样
     stride = stride_init if (
         dim_in != dim_out and dim_in != 64 and dilation == 1
     ) else 1
 
-    # transformation blob
+    # transformation blob 这个是全局定义来的
     tr = globals()[cfg.RESNETS.TRANS_FUNC](
         model,
         blob_in,
